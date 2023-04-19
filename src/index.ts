@@ -1,3 +1,4 @@
+import path from "path";
 import {openSync} from "fs";
 import {spawn} from "child_process";
 
@@ -63,23 +64,27 @@ function filterInternalFunctions(rawDataPath: string): Promise<void> {
   });
 }
 
-function generateOutput(rawDataPath: string): Promise<void> {
+function generateOutput(rawDataPath: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const perfOutputPath = rawDataPath.replace(DATA_EXTENSION, PERF_EXTENSION);
     const stacks = spawn("sudo", ["perf", "script", "-i", rawDataPath], {
       stdio: ["ignore", openSync(perfOutputPath, "w"), "ignore"],
     });
     stacks.on("error", reject);
-    stacks.on("exit", resolve);
+    stacks.on("exit", () => resolve(perfOutputPath));
   });
 }
 
 function foldOutput(perfOutputPath: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const foldedOutputPath = perfOutputPath.replace(PERF_EXTENSION, FOLDED_EXTENSION);
-    const fold = spawn("./stackcollapse-perf.pl", [perfOutputPath], {
-      stdio: ["ignore", openSync(foldedOutputPath, "w"), "ignore"],
-    });
+    const fold = spawn(
+      path.resolve(__dirname, "..", "submodules", "FlameGraph", "stackcollapse-perf.pl"),
+      [perfOutputPath],
+      {
+        stdio: ["ignore", openSync(foldedOutputPath, "w"), "ignore"],
+      }
+    );
     fold.on("error", reject);
     fold.on("exit", () => resolve(foldedOutputPath));
   });
@@ -88,7 +93,7 @@ function foldOutput(perfOutputPath: string): Promise<string> {
 function generateSvg(foldedOutputPath: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const svgOutputPath = foldedOutputPath.replace(FOLDED_EXTENSION, ".svg");
-    const fold = spawn("./flamegraph.pl", [foldedOutputPath], {
+    const fold = spawn(path.resolve(__dirname, "..", "submodules", "FlameGraph", "flamegraph.pl"), [foldedOutputPath], {
       stdio: ["ignore", openSync(svgOutputPath, "w"), "ignore"],
     });
     fold.on("error", reject);
@@ -100,6 +105,7 @@ export async function generateFlamegraph(pid: number): Promise<string> {
   const rawDataPath = `/tmp/perf-${Date.now()}${DATA_EXTENSION}`;
   await runPerf(pid, 99, rawDataPath);
   await filterInternalFunctions(rawDataPath);
-  await generateOutput(rawDataPath);
-  return foldOutput(rawDataPath).then(generateSvg);
+  return generateOutput(rawDataPath)
+    .then(() => foldOutput(rawDataPath))
+    .then(generateSvg);
 }
