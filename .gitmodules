@@ -1,0 +1,6 @@
+[submodule "submodules/flamescope"]
+	path = submodules/flamescope
+	url = https://github.com/Netflix/flamescope.git
+[submodule "submodules/FlameGraph"]
+	path = submodules/FlameGraph
+	url = https://github.com/brendangregg/FlameGraph.git
