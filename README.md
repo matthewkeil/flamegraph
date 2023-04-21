@@ -49,9 +49,9 @@ admin@12.34.56.78: sudo perf record -F 99 -p $(pgrep -f '/usr/src/lodestar/packa
 admin@12.34.56.78: sudo chmod 777 ~/beacon/perf.data
 ```
 
-And then copy the `perf.data` file to your local machine and render the flamegraph. From this repo root run:
+And then copy the `perf.data` file to your local machine and render the flamegraph. There are a few options that have been tested. Open test.ts to modify the results. From this repo root run:
 
 ```sh
 scp admin@12.34.56.78:/home/devops/beacon/out.perf ./data/perf.data
-
+npx ts-node src/test
 ```

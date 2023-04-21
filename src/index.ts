@@ -11,21 +11,22 @@ const FILTERED_EXTENSION = ".filtered";
 const FOLDED_EXTENSION = ".folded";
 
 const INTERNAL_FUNCTIONS = [
-  "__libc_start",
-  "LazyCompile ",
-  "v8::internal::",
-  "Builtin:",
-  "Stub:",
-  "LoadIC:",
+  " __libc_start",
+  " LazyCompile ",
+  " v8::internal::",
+  " Builtin:",
+  " Stub:",
+  " LoadIC:",
   "[unknown]",
-  "LoadPolymorphicIC:",
+  " LoadPolymorphicIC:",
 ].join("|");
 const sedDeleteInternals = `-e '/(${INTERNAL_FUNCTIONS})/d'`;
 const sedReplaceLazyCompile = `-e 's/ LazyCompile:[*~]?/ /'`;
+const baseSedCommand = `sed ${sedDeleteInternals} ${sedReplaceLazyCompile}`;
 
 /**
  * https://nodejs.org/en/docs/guides/diagnostics-flamegraph#filtering-out-nodejs-internal-functions
- * 
+ *
  * sed -i -r \
  * -e "/( __libc_start| LazyCompile | v8::internal::| Builtin:| Stub:| LoadIC:|\[unknown\]| LoadPolymorphicIC:)/d" \
  * -e 's/ LazyCompile:[*~]?/ /' \
@@ -34,19 +35,20 @@ const sedReplaceLazyCompile = `-e 's/ LazyCompile:[*~]?/ /'`;
 export async function filterInternalFunctions(inputPath: string): Promise<string> {
   const inputExtension = path.extname(inputPath);
   const outputPath = inputPath.replace(inputExtension, FILTERED_EXTENSION);
-  const sedCommand = `sed ${sedDeleteInternals} ${sedReplaceLazyCompile} ${inputPath} > ${outputPath}`;
+  const sedCommand = `sed -r -e "/( __libc_start| LazyCompile | v8::internal::| Builtin:| Stub:| LoadIC:|\\[unknown\\]| LoadPolymorphicIC:)/d" -e 's/ LazyCompile:[*~]?/ /' ${inputPath} > ${outputPath}`;
+  // const sedCommand = `${baseSedCommand} ${inputPath} > ${outputPath}`;
   await exec(sedCommand, false);
   return outputPath;
 }
 
-export async function stackCollapse(inputPath: string): Promise<string> {
+async function stackCollapse(inputPath: string): Promise<string> {
   const inputExtension = path.extname(inputPath);
   const outputPath = inputPath.replace(inputExtension, FOLDED_EXTENSION);
   await exec(`${stackCollapsePerlScript} ${inputPath} > ${outputPath}`, false);
   return outputPath;
 }
 
-export async function generateSvg(inputPath: string, filterInternals: boolean): Promise<string> {
+async function generateSvg(inputPath: string, filterInternals: boolean): Promise<string> {
   const inputExtension = path.extname(inputPath);
   const svgExtension = filterInternals ? ".filtered.svg" : "unfiltered.svg";
   const outputPath = inputPath.replace(inputExtension, svgExtension);
@@ -54,9 +56,24 @@ export async function generateSvg(inputPath: string, filterInternals: boolean): 
   return outputPath;
 }
 
-export async function processRawData(inputPath: string, filterInternals = true): Promise<string> {
+export async function renderWithFlameGraph(inputPath: string, filterInternals = true): Promise<string> {
+  return stackCollapse(inputPath).then((p) => generateSvg(p, filterInternals));
+}
+
+export async function renderWithStackvis(inputPath: string, filterInternals: boolean): Promise<string> {
+  const inputDir = path.dirname(inputPath);
+  const outputName = filterInternals ? "index.filtered.html" : "index.unfiltered.html";
+  const outputPath = path.resolve(inputDir, outputName);
+  await exec(`stackvis perf < ${inputPath} > ${outputPath}`, false);
+  return outputPath;
+}
+
+type Renderer = "flamegraph" | "stackvis";
+
+export async function processRawData(inputPath: string, renderer: Renderer, filterInternals = true): Promise<string> {
   const processed = filterInternals ? filterInternalFunctions(inputPath) : Promise.resolve(inputPath);
-  return processed.then(stackCollapse).then((p) => generateSvg(p, filterInternals));
+  const _renderer = renderer === "flamegraph" ? renderWithFlameGraph : renderWithStackvis;
+  return processed.then((p) => _renderer(p, filterInternals));
 }
 
 // interface PerfSettings {
