@@ -2,20 +2,22 @@
 
 This guide assumes a running instance of Lodestar and will walk through how to generate a flamegraph for the process.
 
-## Prerequisites
+## Installation
 
-Install `perf` to generate the stack traces
+Install rendering tools [0x](https://github.com/davidmarkclements/0x.git), [`FlameGraph`](https://github.com/brendangregg/FlameGraph) and [`flamescope`](https://github.com/Netflix/flamescope).  They are all submodules of this repo so:
 
-```bash
-sudo apt-get install linux-tools-common linux-tools-generic`
-sudo apt-get install linux-tools-`uname -r`  # empirically this throws if run on the same line above
+```sh
+git submodule update --init --recursive
 ```
 
-Install rendering tools [`brendangregg/FlameGraph`](https://github.com/brendangregg/FlameGraph) and [`Netflix/flamescope`](https://github.com/Netflix/flamescope)
-
-
-
 ## Modifying Lodestar
+
+Install `perf` to generate the stack traces.  You may get a warning about needing to restart the VM due to kernel updates.  If so, cancel out of the restart.
+
+```bash
+sudo apt-get install linux-tools-common linux-tools-generic
+sudo apt-get install linux-tools-`uname -r`  # empirically this throws if run on the same line above
+```
 
 SSH into the Lodestar instance and modify `~/beacon/beacon_run.sh` to add a necessary flag.
 
@@ -43,18 +45,13 @@ node \
   beacon \
   --rcConfig /home/devops/beacon/rcconfig.yml
 admin@12.34.56.78: sudo systemctl restart beacon.service
-admin@12.34.56.78: pgrep -f '/usr/src/lodestar/packages/cli/bin/lodestar'
-310256
-admin@12.34.56.78: sudo perf record -F 99 -p 310256 -g -- sleep 600
-admin@12.34.56.78: perf script > out.perf
+admin@12.34.56.78: sudo perf record -F 99 -p $(pgrep -f '/usr/src/lodestar/packages/cli/bin/lodestar beacon') -g -- sleep 60
+admin@12.34.56.78: sudo chmod 777 ~/beacon/perf.data
 ```
 
-And then copy the `out.perf` file to your local machine and render the flamegraph.
+And then copy the `perf.data` file to your local machine and render the flamegraph. From this repo root run:
 
 ```sh
-cd ~/Documents/dev/lodestar/benchmark_data/flamegraphs
-scp devops@12.34.56.78:/home/devops/beacon/out.perf .
-# TODO: Need to export the below as a script to import in lodestar
-./stackcollapse-perf.pl out.perf > out.folded
-./flamegraph.pl data/out.folded > lodestar.svg 
+scp admin@12.34.56.78:/home/devops/beacon/out.perf ./data/perf.data
+
 ```

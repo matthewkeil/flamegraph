@@ -1,16 +1,69 @@
 import path from "path";
 import {openSync} from "fs";
+import {exec} from "../lib/exec";
 import {spawn} from "child_process";
 
+const stackCollapsePerlScript = path.resolve(__dirname, "..", "submodules", "FlameGraph", "stackcollapse-perf.pl");
+const svgPerlScript = path.resolve(__dirname, "..", "submodules", "FlameGraph", "flamegraph.pl");
+
 const DATA_EXTENSION = ".data";
-const PERF_EXTENSION = ".perf";
+const FILTERED_EXTENSION = ".filtered";
 const FOLDED_EXTENSION = ".folded";
 
-interface PerfSettings {
-  output: string;
-  pid: string;
-  timeInSec: number;
+const INTERNAL_FUNCTIONS = [
+  "__libc_start",
+  "LazyCompile ",
+  "v8::internal::",
+  "Builtin:",
+  "Stub:",
+  "LoadIC:",
+  "[unknown]",
+  "LoadPolymorphicIC:",
+].join("|");
+const sedDeleteInternals = `-e '/(${INTERNAL_FUNCTIONS})/d'`;
+const sedReplaceLazyCompile = `-e 's/ LazyCompile:[*~]?/ /'`;
+
+/**
+ * https://nodejs.org/en/docs/guides/diagnostics-flamegraph#filtering-out-nodejs-internal-functions
+ * 
+ * sed -i -r \
+ * -e "/( __libc_start| LazyCompile | v8::internal::| Builtin:| Stub:| LoadIC:|\[unknown\]| LoadPolymorphicIC:)/d" \
+ * -e 's/ LazyCompile:[*~]?/ /' \
+ * perfs.out
+ */
+export async function filterInternalFunctions(inputPath: string): Promise<string> {
+  const inputExtension = path.extname(inputPath);
+  const outputPath = inputPath.replace(inputExtension, FILTERED_EXTENSION);
+  const sedCommand = `sed ${sedDeleteInternals} ${sedReplaceLazyCompile} ${inputPath} > ${outputPath}`;
+  await exec(sedCommand, false);
+  return outputPath;
 }
+
+export async function stackCollapse(inputPath: string): Promise<string> {
+  const inputExtension = path.extname(inputPath);
+  const outputPath = inputPath.replace(inputExtension, FOLDED_EXTENSION);
+  await exec(`${stackCollapsePerlScript} ${inputPath} > ${outputPath}`, false);
+  return outputPath;
+}
+
+export async function generateSvg(inputPath: string, filterInternals: boolean): Promise<string> {
+  const inputExtension = path.extname(inputPath);
+  const svgExtension = filterInternals ? ".filtered.svg" : "unfiltered.svg";
+  const outputPath = inputPath.replace(inputExtension, svgExtension);
+  await exec(`${svgPerlScript} ${inputPath} > ${outputPath}`, false);
+  return outputPath;
+}
+
+export async function processRawData(inputPath: string, filterInternals = true): Promise<string> {
+  const processed = filterInternals ? filterInternalFunctions(inputPath) : Promise.resolve(inputPath);
+  return processed.then(stackCollapse).then((p) => generateSvg(p, filterInternals));
+}
+
+// interface PerfSettings {
+//   output: string;
+//   pid: string;
+//   timeInSec: number;
+// }
 
 // function buildOsxCommand({pid, output, timeInSec}: PerfSettings): string {
 //   return [
@@ -24,88 +77,50 @@ interface PerfSettings {
 //   ].join(" ");
 // }
 
-function runPerf(pid: number, freq: number, rawDataPath: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    // return `perf record -g -p ${pid} -F ${freq} -o ${outPath}`;
-    const stacks = spawn("sudo", ["perf", "record", "-g", `-p ${pid}`, `-F ${freq}`, "-o", rawDataPath], {
-      stdio: ["ignore", "inherit", "inherit", "ignore", "ignore", "pipe"],
-    });
-    stacks.on("error", reject);
-    stacks.on("exit", resolve);
-  });
-}
+// export function runPerf(pid: number, freq: number, rawDataPath: string): Promise<void> {
+//   return new Promise((resolve, reject) => {
+//     // return `perf record -g -p ${pid} -F ${freq} -o ${outPath}`;
+//     const stacks = spawn("sudo", ["perf", "record", "-g", `-p ${pid}`, `-F ${freq}`, "-o", rawDataPath], {
+//       stdio: ["ignore", "inherit", "inherit", "ignore", "ignore", "pipe"],
+//     });
+//     stacks.on("error", reject);
+//     stacks.on("exit", resolve);
+//   });
+// }
 
-// Filtering out Node.js internal functions
-function filterInternalFunctions(rawDataPath: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const sed = spawn(
-      "sudo",
-      [
-        "sed",
-        "-i",
-        "-e",
-        "/( __libc_start| LazyCompile | v8::internal::| Builtin:| Stub:| LoadIC:|[unknown]| LoadPolymorphicIC:)/d",
-        "-e",
-        "s/ LazyCompile:[*~]?/ /",
-        rawDataPath,
-      ],
-      {
-        stdio: ["ignore", "inherit", "inherit", "ignore", "ignore", "pipe"],
-      }
-    );
+// export function generateOutput(rawDataPath: string): Promise<string> {
+//   return exec(`sudo perf script -i ${rawDataPath}`, false);
+// }
 
-    sed.on("error", reject);
-    sed.on("exit", function (code) {
-      if (code !== null && code !== 0) {
-        reject(new Error("`sed` subprocess error, code: " + code));
-      }
-      resolve();
-    });
-  });
-}
+// export function generateOutput2(rawDataPath: string): Promise<string> {
+//   return new Promise((resolve, reject) => {
+//     const perfOutputPath = rawDataPath.replace(DATA_EXTENSION, PERF_EXTENSION);
+//     const stacks = spawn("sudo", ["perf", "script", "-i", rawDataPath], {
+//       stdio: ["ignore", openSync(perfOutputPath, "w"), "ignore"],
+//     });
+//     stacks.on("error", reject);
+//     stacks.on("exit", () => resolve(perfOutputPath));
+//   });
+// }
 
-function generateOutput(rawDataPath: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const perfOutputPath = rawDataPath.replace(DATA_EXTENSION, PERF_EXTENSION);
-    const stacks = spawn("sudo", ["perf", "script", "-i", rawDataPath], {
-      stdio: ["ignore", openSync(perfOutputPath, "w"), "ignore"],
-    });
-    stacks.on("error", reject);
-    stacks.on("exit", () => resolve(perfOutputPath));
-  });
-}
+/**
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ */
 
-function foldOutput(perfOutputPath: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const foldedOutputPath = perfOutputPath.replace(PERF_EXTENSION, FOLDED_EXTENSION);
-    const fold = spawn(
-      path.resolve(__dirname, "..", "submodules", "FlameGraph", "stackcollapse-perf.pl"),
-      [perfOutputPath],
-      {
-        stdio: ["ignore", openSync(foldedOutputPath, "w"), "ignore"],
-      }
-    );
-    fold.on("error", reject);
-    fold.on("exit", () => resolve(foldedOutputPath));
-  });
-}
-
-function generateSvg(foldedOutputPath: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const svgOutputPath = foldedOutputPath.replace(FOLDED_EXTENSION, ".svg");
-    const fold = spawn(path.resolve(__dirname, "..", "submodules", "FlameGraph", "flamegraph.pl"), [foldedOutputPath], {
-      stdio: ["ignore", openSync(svgOutputPath, "w"), "ignore"],
-    });
-    fold.on("error", reject);
-    fold.on("exit", () => resolve(svgOutputPath));
-  });
-}
-
-export async function generateFlamegraph(pid: number): Promise<string> {
-  const rawDataPath = `/tmp/perf-${Date.now()}${DATA_EXTENSION}`;
-  await runPerf(pid, 99, rawDataPath);
-  await filterInternalFunctions(rawDataPath);
-  return generateOutput(rawDataPath)
-    .then(() => foldOutput(rawDataPath))
-    .then(generateSvg);
-}
+// export function generateSvg2(foldedOutputPath: string): Promise<string> {
+//   return new Promise((resolve, reject) => {
+//     const svgOutputPath = foldedOutputPath.replace(FOLDED_EXTENSION, ".svg");
+//     const fold = spawn(path.resolve(__dirname, "..", "submodules", "FlameGraph", "flamegraph.pl"), [foldedOutputPath], {
+//       stdio: ["ignore", openSync(svgOutputPath, "w"), "ignore"],
+//     });
+//     fold.on("error", reject);
+//     fold.on("exit", () => resolve(svgOutputPath));
+//   });
+// }
