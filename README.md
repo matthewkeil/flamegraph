@@ -23,7 +23,7 @@ SSH into the Lodestar instance and modify `~/beacon/beacon_run.sh` to add a nece
 
 ```sh
 admin@12.34.56.78: cd ~/beacon
-admin@12.34.56.78: vim beacon_run.sh # add --perf-basic-prof-only-functions
+admin@12.34.56.78: vim beacon_run.sh # add --perf-basic-prof or --perf-basic-prof-only-functions
 admin@12.34.56.78: cat beacon_run.sh # should look something like this when done
 #!/bin/bash
 
@@ -39,7 +39,7 @@ source ~/.nvm/nvm.sh
 # DON'T FORGET '\' CHARACTER WHEN EDITING FLAGS!!
 
 node \
-  --perf-basic-prof-only-functions \
+  --perf-basic-prof \
   --max-old-space-size=4096 \
   /usr/src/lodestar/packages/cli/bin/lodestar \
   beacon \
