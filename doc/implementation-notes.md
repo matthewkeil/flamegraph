@@ -9,7 +9,6 @@
 
 ## Libraries
 
-- [`node-stackvis`](https://www.npmjs.com/package/stackvis)
 - [`Ox`](https://www.npmjs.com/package/0x)
 - [`node-clinic`](https://github.com/clinicjs/node-clinic)
 - [`flamebearer`](https://github.com/mapbox/flamebearer)
@@ -17,6 +16,7 @@
 ## Visualization Tools
 
 - [`FlameGraph`](https://github.com/brendangregg/FlameGraph)
+- [`node-stackvis`](https://www.npmjs.com/package/stackvis)
 - [`flamescope`](https://github.com/Netflix/flamescope)
 - [`d3-flame-graph`](https://github.com/spiermar/d3-flame-graph)
 
