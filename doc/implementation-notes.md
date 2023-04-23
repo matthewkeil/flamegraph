@@ -5,8 +5,8 @@
 - <https://www.brendangregg.com/flamegraphs.html>
 - <https://nodejs.org/en/docs/guides/diagnostics-flamegraph>
 - <https://netflixtechblog.com/netflix-flamescope-a57ca19d47bb>
-- <https://jaanhio.me/blog/nodejs-flamegraph-analysis/>
-- <https://medium.com/voodoo-engineering/node-js-and-cpu-profiling-on-production-in-real-time-without-downtime-d6e62af173e2> (this was a great one about filtering methodology)
+- <https://jaanhio.me/blog/nodejs-flamegraph-analysis/>  (this was a great one about filtering methodology)
+- <https://medium.com/voodoo-engineering/node-js-and-cpu-profiling-on-production-in-real-time-without-downtime-d6e62af173e2>
 
 ## Libraries
 
